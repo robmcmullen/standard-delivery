@@ -1,19 +1,24 @@
 ;fast boot-loader in one sector
 ;copyright (c) Peter Ferrie 2016
 ;thanks to 4am for inspiration and testing
-;assemble using ACME
-!cpu 6502
-!to "fstbt",plain
+
+; HGR hacks by Rob McMullen
+; assemble with MAC/65 compatible assembler like ATasm
 *=$800
 
         enable_banked = 0       ;set to bank number (1 or 2) to enable reading into banked RAM
 
-!byte 1
+        .byte 1
 
         tay                     ;A is last read sector+1 on entry
-!if enable_banked > 0 {
+
+        sta $c050               ; start with HGR page 1
+        sta $c052
+        sta $c057
+
+.if enable_banked > 0
         lda     $C081           ;bank in ROM
-}
+.endif
 
         ;check array before checking sector number
         ;allows us to avoid a redundant seek if all slots are full in a track,
@@ -26,6 +31,18 @@ adrindex
         lda     adrtable - 1    ;15 entries in first row, 16 entries thereafter
         cmp     #$C0
         beq     jmpoep          ;#$C0 means end of data
+        cmp #$d0                ; NOP
+        beq incindex
+        cmp #$d1                ; set full screen HGR page 1
+        bne trypage2
+        sta $c054
+        beq incindex
+trypage2
+        cmp #$d2                ; set full screen HGR page 2
+        bne normal
+        sta $c055
+        beq incindex
+normal
         sta     $27             ;set high part of address
 
         ;2, 4, 6, 8, $0A, $0C, $0E
@@ -46,7 +63,7 @@ adrindex
         ;back to 0
 
         tay
-        !byte   $2C             ;mask LDY #1
+        .byte   $2C             ;mask LDY #1
 sector1
         ldy     #1
 
@@ -65,12 +82,13 @@ setsector
         lda     #$5B            ;read-1
         pha
 
-!if enable_banked > 0 {
+.if enable_banked > 0
 writeenable
         lda     $C093-(enable_banked*8)
         lda     $C093-(enable_banked*8)
                                 ;write-enable RAM and bank it in so read can decode
-}
+.endif
+
         rts                     ;return to PROM
 
 seek
@@ -94,13 +112,14 @@ delay
         jmp     $FCA8           ;common delay for all phases
 
 jmpoep
-!if enable_banked > 0 {
+.if enable_banked > 0
         jsr     writeenable     ;bank in our RAM, write-enabled
-}
+.endif
+
         jmp     $1234           ;arbitrary entry-point to use after read completes
                                 ;set to the value that you need
 
 adrtable
 ;15 slots for track 0 (track 0 sector 0 is not addressable)
 ;16 slots for all other tracks, fill with addresses, 0 to skip any sector
-!byte $C0 ;end of list
+.byte $C0 ;end of list
