@@ -16,6 +16,13 @@
         sta $c052
         sta $c057
 
+skip_smc
+        bne incindex ; skip unless changed to BIT: A always >= 1
+        dec $fe
+        bpl normal_next
+        lda #$d0  ; BNE
+        sta skip_smc ; turn back into a skip
+
 .if enable_banked > 0
         lda     $C081           ;bank in ROM
 .endif
@@ -39,9 +46,22 @@ adrindex
         beq incindex
 trypage2
         cmp #$d2                ; set full screen HGR page 2
-        bne normal
+        bne tryloop
         sta $c055
         beq incindex
+tryloop
+        cmp #$e0                ; additional sectors?
+        bcc normal
+
+        ; $e0 - $ff means load 0 - 31 additional sectors in consecutive pages
+        ; starting at the page after the one just loaded
+
+        and #$1f
+        sta $fe
+        lda #$24  ; BIT $#nn
+        sta skip_smc
+        bpl skip_smc  ; $27 is automatically incremented
+
 normal
         sta     $27             ;set high part of address
 
@@ -50,6 +70,7 @@ normal
         ;and is too slow to read sectors in purely incremental order
         ;so we offer every other sector for read candidates
 
+normal_next
         iny
         cpy     #$10
         bcc     setsector       ;cases 1-$0F
